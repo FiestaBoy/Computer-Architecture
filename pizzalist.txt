@@ -1,0 +1,8 @@
+cheese 5.99 10.0
+MisterChedda 8.99 13.5
+ExtremeGabagool 17.99 19
+Havaju 12.99 8
+Pepperoni 17 12
+Surio 22.69 13
+Lavaso 7 3.9
+Kaka 14.56 6.98
