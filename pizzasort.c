@@ -1,5 +1,3 @@
-// Definitely one of the messiest codes I've ever written, could do better, but would take a lot of rewriting
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

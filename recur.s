@@ -68,8 +68,8 @@ recursion:
     # Sn = 3 * n - 2 + Sn-1
     addi $t1, $t1, -2
 
-    # load return address and move the stack pointer back
-    lw $ra, 8($sp)
+    # load return address and move the stack pointer back (collapse it)
+    lw $ra, 0($sp)
     addi $sp, $sp, 8
 
     # return with the correct value of $t1
