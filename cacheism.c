@@ -6,10 +6,13 @@
 #include <stdbool.h>
 #include <limits.h>
 
+# define MEMSIZE 65536
+
 typedef struct block {
     int* LRU; // Array to keep track of the least recently used element of the set
     int* words; // Array to store words (addresses)
     int* values; // Array to store values at the addresses
+    bool valid;
 } block_t;
 
 // Initialize a new block in cache
@@ -18,6 +21,7 @@ block_t* newBlock(int block_size) {
     ret->values = (int*)malloc(block_size * sizeof(int));
     ret->words = (int*)malloc(block_size * sizeof(int));
     ret->LRU = (int*)malloc(block_size * sizeof(int));
+    ret->valid = false;
     for (int i = 0; i < block_size; i++) {
         ret->LRU[i] = 0;
         ret->words[i] = 0;
@@ -39,11 +43,11 @@ block_t*** populateCache(int blocks, int block_size, int block_associativity) {
     return cache;
 }
 
-// Find the index of the LRU element
-int findLRU(int* arr, int block_size) {
+// Finds LRU block index
+int findLRU(int* arr, int block_associativity) {
     int min = INT_MAX;
     int index = -1;
-    for (int i = 0; i < block_size; i++) {
+    for (int i = 0; i < block_associativity; i++) {
         if (arr[i] < min) {
             min = arr[i];
             index = i;
@@ -52,8 +56,36 @@ int findLRU(int* arr, int block_size) {
     return index;
 }
 
+// MEMUAR FOR MYSELF! Blocks are of size block_size, they cannot overlap! Extract the block that the value is in.
+// function for placing blocks 
+int* memExtract(int address, int block_size, int* memory) {
+    int block_num = address / block_size; // Cuts the remainder
+    int start_address = block_num * block_size;
+    int* extracted = (int*)malloc(block_size * sizeof(int));
+    int counter = 0;
+    while (counter < block_size) {
+        extracted[counter] = memory[start_address + counter];
+        counter++;
+    }
+    return extracted;
+}
+
+int* addrExtract(int address, int block_size) {
+    int block_num = address / block_size; // Cuts the remainder
+    int start_address = block_num * block_size;
+    int* extracted = (int*)malloc(block_size * sizeof(int));
+    int counter = 0;
+    while (counter < block_size) {
+        extracted[counter] = start_address + counter;
+        counter++;
+    }
+    return extracted;
+}
+
 int main(int argc, char** argv) {
-    int main_memory[65536] = {0};  // Initialize all main memory to 0
+    int* main_memory = (int*)malloc(sizeof(int) * MEMSIZE);
+    memset(main_memory, 0, MEMSIZE);
+
     int blocks, block_size, block_associativity;
     bool console_log = false; // Used to select whether to write to the console or to a file
     int LRU_tracker = 0;
@@ -97,13 +129,16 @@ int main(int argc, char** argv) {
 
         block_index = -1;
         bool hit = false;
-        // Iterating through parallel blocks and checking for cache hits
-        for (int i = 0; i < block_associativity; i++) {
-            if (cache[set_index][i]->words[block_offset] == address) {
+        
+        for (int i = 0; i < block_associativity; i++) { 
+            for (int j = 0; j < block_size; j++) {
+                if (cache[set_index][i]->words[j] == tag && cache[set_index][i]->valid) { 
                 block_index = i;
                 hit = true;
                 break;
             }
+            }
+            if (hit) break;
         }
 
         if (hit) {
@@ -123,26 +158,38 @@ int main(int argc, char** argv) {
             }
             cache[set_index][block_index]->LRU[block_offset] = LRU_tracker++;  // Update LRU
         } else {
-            int lru_block = findLRU(cache[set_index][0]->LRU, block_size); // Get the index of the LRU element
+            int lru_block = -1;
+            for (int i = 0; i < block_associativity; i++) {
+                int lru_min = INT_MAX;
+                int lru_compare = findLRU(cache[set_index][i]->LRU, block_size); // Get the index of the LRU element
+                if (lru_min > lru_compare) {
+                    lru_block = lru_compare;
+                    lru_min = lru_compare;
+                }
+            }
             if (strcmp(command, "load") == 0) {
+                // On a miss bring the block from the main memory to cache
+                cache[set_index][lru_block]->valid = true;
+                cache[set_index][lru_block]->values = memExtract(address, block_size, main_memory); // Loads a block from main memory into cache
+                cache[set_index][lru_block]->words = addrExtract(address, block_size);
                 if (console_log) {
                     printf("load 0x%x miss %d\n", address, cache[set_index][lru_block]->values[block_offset]);
                 } else {
                     fprintf(output_file, "load 0x%x miss %d\n", address, cache[set_index][lru_block]->values[block_offset]);
                 }
-                // On a miss bring the block from the main memory to cache
-                cache[set_index][lru_block]->values[block_offset] = main_memory[address];
-                cache[set_index][lru_block]->words[block_offset] = address;
             } else if (strcmp(command, "store") == 0) {
+                // Bring the block from the main memory to cache and update the main memory
+                cache[set_index][lru_block]->valid = true;
+                cache[set_index][lru_block]->values = memExtract(address, block_size, main_memory); // Loads a block from main memory into cache
+                cache[set_index][lru_block]->words = addrExtract(address, block_size);
+                cache[set_index][lru_block]->values[block_offset] = value;
+                cache[set_index][lru_block]->words[block_offset] = tag; 
+                main_memory[address] = value;
                 if (console_log) {
                     printf("store 0x%x miss\n", address);
                 } else {
                     fprintf(output_file, "store 0x%x miss\n", address);
                 }
-                // Bring the block from the main memory to cache and update the main memory
-                cache[set_index][lru_block]->values[block_offset] = value;
-                cache[set_index][lru_block]->words[block_offset] = address;
-                main_memory[address] = value;
             }
             cache[set_index][lru_block]->LRU[block_offset] = LRU_tracker++;  // Update LRU
         }
